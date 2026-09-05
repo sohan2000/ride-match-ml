@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Iterable, Mapping
 
 
@@ -19,7 +20,12 @@ def marketplace_metrics(
 
     rows = list(outcomes)
     waits = sorted(float(row["wait_minutes"]) for row in rows)
-    matched = [row for row in rows if row.get("driver_id") is not None]
+    matched = [
+        row
+        for row in rows
+        if row.get("driver_id") is not None
+        and not (isinstance(row.get("driver_id"), float) and math.isnan(row["driver_id"]))
+    ]
     cancellations = [row for row in rows if bool(row["cancelled"])]
     sla_hits = [wait for wait in waits if wait <= sla_minutes]
     p90_index = min(len(waits) - 1, int(len(waits) * 0.9)) if waits else 0

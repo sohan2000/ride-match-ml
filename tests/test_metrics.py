@@ -27,3 +27,13 @@ def test_marketplace_metrics_report_fulfillment_kpis():
     assert metrics["sla_hit_rate"] == 1 / 3
     assert metrics["cancellation_rate"] == 1 / 3
     assert metrics["driver_utilization"] == 0.4
+
+
+def test_marketplace_metrics_does_not_count_nan_driver_as_matched():
+    metrics = marketplace_metrics([
+        {"driver_id": float("nan"), "wait_minutes": 10.0, "cancelled": True},
+        {"driver_id": "d1", "wait_minutes": 3.0, "cancelled": False},
+    ])
+
+    assert metrics["matched"] == 1
+    assert metrics["match_coverage"] == 0.5
