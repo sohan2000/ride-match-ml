@@ -26,7 +26,7 @@ def test_simulation_emits_time_ordered_candidate_records():
 
     assert len(dataset) > 0
     assert {"request_id", "driver_id", "hour_of_day", "matched"}.issubset(dataset.columns)
-    assert dataset["matched"].sum() == dataset["request_id"].nunique()
+    assert dataset.groupby("request_id")["matched"].sum().eq(1).all()
 
 
 def test_simulation_emits_one_outcome_per_request():
@@ -35,3 +35,4 @@ def test_simulation_emits_one_outcome_per_request():
     assert len(outcomes) == 5
     assert outcomes["request_id"].is_unique
     assert set(outcomes["status"]).issubset({"matched", "cancelled"})
+    assert outcomes["cancelled"].any()

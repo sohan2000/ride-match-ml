@@ -1,13 +1,14 @@
 project_name: ride-match-ml
 city:
-  width: 20
-  height: 20
+  width: 40
+  height: 40
 simulation:
   drivers: 40
-  riders: 40
+  riders: 600
+  steps: 1440
   seed: 42
 model:
-  type: random_forest
+  type: gradient_boosting_utility_regressor
   n_estimators: 200
   random_state: 42
 api:

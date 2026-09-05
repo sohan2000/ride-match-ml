@@ -12,6 +12,10 @@ ONLINE_FEATURE_COLUMNS = [
     "demand_supply_ratio",
     "hour_of_day",
     "is_peak",
+    "driver_acceptance_rate",
+    "same_pickup_zone",
+    "pickup_zone_supply",
+    "pickup_zone_demand_supply_ratio",
 ]
 LABEL_COLUMN = "matched"
 
@@ -24,6 +28,10 @@ def build_feature_table(df: pd.DataFrame) -> pd.DataFrame:
         "available_drivers",
         "open_requests",
         "hour_of_day",
+        "driver_acceptance_rate",
+        "same_pickup_zone",
+        "pickup_zone_supply",
+        "pickup_zone_demand_supply_ratio",
         LABEL_COLUMN,
     }
     missing_columns = required_columns.difference(df.columns)

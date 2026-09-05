@@ -69,6 +69,10 @@ class CandidateMatchRecord:
     realized_wait_minutes: float
     cancelled: int
     candidate_utility: float
+    driver_acceptance_rate: float = 0.8
+    same_pickup_zone: int = 0
+    pickup_zone_supply: int = 0
+    pickup_zone_demand_supply_ratio: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self) | {"event_time": self.event_time.isoformat()}
@@ -84,6 +88,8 @@ class AssignmentOutcome:
     wait_minutes: float
     ride_minutes: float | None
     cancelled: bool
+    driver_accepted: bool = True
+    rider_cancelled: bool = False
 
     def __post_init__(self) -> None:
         if self.status not in REQUEST_STATUSES:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import hypot
+from math import ceil, sqrt
 from typing import List
 
 
@@ -30,8 +31,16 @@ class City:
         return hypot(driver.x - rider.x, driver.y - rider.y)
 
     def generate_drivers(self, count: int) -> List[Driver]:
+        columns = max(1, ceil(sqrt(count)))
+        spacing_x = self.width / columns
+        spacing_y = self.height / columns
         return [
-            Driver(driver_id=f"d{i}", x=(i % 10) * 0.7, y=(i // 10) * 0.7, status="available")
+            Driver(
+                driver_id=f"d{i}",
+                x=(i % columns + 0.5) * spacing_x,
+                y=(i // columns + 0.5) * spacing_y,
+                status="available",
+            )
             for i in range(count)
         ]
 

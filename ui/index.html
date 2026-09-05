@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RideMatch Dispatch</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --ink: #17211b;
+      --muted: #69756d;
+      --line: #d9e1da;
+      --paper: #f7f8f3;
+      --card: #ffffff;
+      --green: #1f6b4d;
+      --green-dark: #164c37;
+      --orange: #e27d4f;
+      --soft-green: #e6f0e9;
+      --shadow: 0 18px 50px rgba(23, 33, 27, .09);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Georgia, "Times New Roman", serif;
+    }
+    .shell { min-height: 100vh; background: radial-gradient(circle at 92% 8%, #e4efe7 0 18%, transparent 42%), var(--paper); }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 28px 6vw; border-bottom: 1px solid rgba(217,225,218,.7); }
+    .brand { display: flex; gap: 12px; align-items: center; font-size: 21px; font-weight: bold; letter-spacing: .02em; }
+    .mark { width: 34px; height: 34px; display: grid; place-items: center; color: white; background: var(--green); border-radius: 50%; font-family: Arial, sans-serif; font-weight: 700; }
+    .status { display: flex; align-items: center; gap: 8px; color: var(--muted); font: 13px Arial, sans-serif; }
+    .dot { width: 8px; height: 8px; background: #43a66e; border-radius: 50%; }
+    main { max-width: 1180px; margin: 0 auto; padding: 58px 24px 80px; }
+    .intro { max-width: 720px; margin-bottom: 34px; }
+    .eyebrow { color: var(--orange); font: 700 12px Arial, sans-serif; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 12px 0 12px; font-size: clamp(38px, 6vw, 70px); line-height: .98; font-weight: 500; }
+    .intro p { max-width: 620px; margin: 0; color: var(--muted); font: 16px/1.6 Arial, sans-serif; }
+    .signals { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 26px 0 34px; }
+    .signal { padding: 14px; background: rgba(255,255,255,.72); border: 1px solid var(--line); border-radius: 6px; }
+    .signal-value { color: var(--green); font: 700 19px Arial, sans-serif; }
+    .signal-label { margin-top: 5px; color: var(--muted); font: 10px Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+    .workspace { display: grid; grid-template-columns: minmax(290px, 390px) 1fr; gap: 22px; align-items: start; }
+    .panel { background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 8px; }
+    .form-panel { padding: 26px; }
+    h2 { margin: 0 0 20px; font-size: 23px; font-weight: 500; }
+    label { display: block; margin: 17px 0 7px; color: var(--muted); font: 700 11px Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+    .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    input { width: 100%; padding: 13px 12px; color: var(--ink); background: #fbfcf9; border: 1px solid var(--line); border-radius: 5px; font: 16px Arial, sans-serif; }
+    input:focus { outline: 2px solid #a7cdb6; border-color: var(--green); }
+    button { width: 100%; margin-top: 24px; padding: 14px 18px; color: white; background: var(--green); border: 0; border-radius: 5px; cursor: pointer; font: 700 14px Arial, sans-serif; }
+    button:hover { background: var(--green-dark); }
+    button:disabled { cursor: wait; opacity: .65; }
+    .hint { margin: 16px 0 0; color: var(--muted); font: 12px/1.5 Arial, sans-serif; }
+    .map-panel { min-height: 500px; padding: 26px; overflow: hidden; background: #eef3ed; position: relative; }
+    #map { width: 100%; height: clamp(380px, 48vw, 520px); margin: 0 0 18px; border: 1px solid #cbd9cd; border-radius: 6px; background: #e8f0e8; }
+    .leaflet-container { font-family: Arial, sans-serif; }
+    .leaflet-control-zoom a { color: var(--green); }
+    .route-label { padding: 6px 8px; color: #fff; background: #17211b; border: 0; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.22); font: 700 11px/1.25 Arial, sans-serif; white-space: nowrap; }
+    .map-content { position: relative; z-index: 1; }
+    .map-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .map-title h2 { margin: 0; }
+    .map-title h2 span { color: var(--muted); font: 12px Arial, sans-serif; }
+    .tag { padding: 7px 10px; color: var(--green); background: var(--soft-green); border-radius: 99px; font: 700 11px Arial, sans-serif; }
+    .drivers { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+    .driver { padding: 15px; background: rgba(255,255,255,.86); border: 1px solid rgba(217,225,218,.95); border-radius: 6px; backdrop-filter: blur(5px); }
+    .driver-top, .candidate-top { display: flex; justify-content: space-between; align-items: center; }
+    .driver-name { font: 700 14px Arial, sans-serif; }
+    .available { color: var(--green); font: 11px Arial, sans-serif; }
+    .driver-meta { margin-top: 10px; color: var(--muted); font: 12px/1.5 Arial, sans-serif; }
+    .driver-eta { color: var(--green); font-weight: 700; }
+    .result { display: none; margin-top: 18px; padding: 20px; background: white; border: 1px solid var(--line); border-radius: 6px; }
+    .result.visible { display: block; }
+    .result-kicker { color: var(--orange); font: 700 11px Arial, sans-serif; letter-spacing: .1em; text-transform: uppercase; }
+    .selected { margin: 5px 0 16px; font-size: 28px; }
+    .candidate { padding: 11px 0; border-top: 1px solid var(--line); font: 13px Arial, sans-serif; }
+    .score { color: var(--green); font-weight: 700; }
+    .error { display: none; margin-top: 14px; color: #a53f32; font: 13px Arial, sans-serif; }
+    @media (max-width: 760px) { header { padding: 20px 22px; } main { padding: 38px 16px 54px; } .workspace { grid-template-columns: 1fr; } .map-panel { min-height: 500px; } #map { height: min(420px, 92vw); } .status { display: none; } .signals { grid-template-columns: repeat(2, 1fr); margin-bottom: 26px; } .signal:last-child { grid-column: span 2; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><span class="mark">R</span><span>RideMatch</span></div>
+      <div class="status"><span class="dot"></span> Matching service online</div>
+    </header>
+    <main>
+      <section class="intro">
+        <div class="eyebrow">Fulfillment console</div>
+        <h1>Find the right ride.</h1>
+        <p>Enter a pickup point and let the matching policy rank the available drivers in real time.</p>
+      </section>
+      <section class="signals" aria-label="System status">
+        <article class="signal"><div class="signal-value" id="signal-model">Loading</div><div class="signal-label">Serving model</div></article>
+        <article class="signal"><div class="signal-value" id="signal-features">--</div><div class="signal-label">Online features</div></article>
+        <article class="signal"><div class="signal-value" id="signal-fleet">--</div><div class="signal-label">Moving cabs</div></article>
+        <article class="signal"><div class="signal-value" id="signal-city">--</div><div class="signal-label">City grid</div></article>
+        <article class="signal"><div class="signal-value" id="signal-radius">--</div><div class="signal-label">Nearby radius</div></article>
+      </section>
+      <section class="workspace">
+        <form class="panel form-panel" id="match-form">
+          <h2>New request</h2>
+          <label for="request-id">Requester</label>
+          <input id="request-id" value="Sohan" required>
+          <label>Pickup coordinates</label>
+          <div class="inputs">
+            <input id="pickup-x" type="number" step="0.1" value="4" aria-label="Pickup X" required>
+            <input id="pickup-y" type="number" step="0.1" value="3" aria-label="Pickup Y" required>
+          </div>
+          <label for="open-requests">Available rides</label>
+          <input id="open-requests" type="number" min="1" value="2" required>
+          <button id="submit" type="submit">Find my driver</button>
+          <p class="hint">40 km x 40 km grid. ETA uses straight-line distance at 2.5 min/km; real road routing is not modeled.</p>
+          <div class="error" id="error"></div>
+        </form>
+        <section class="panel map-panel">
+          <div class="map-content">
+            <div class="map-title"><h2>Available drivers <span id="nearby-count"></span></h2><span class="tag">Live candidate pool</span></div>
+            <div id="map" aria-label="RideMatch city grid map"></div>
+            <div class="drivers" id="drivers"></div>
+            <div class="result" id="result">
+              <div class="result-kicker">Recommended match</div>
+              <div class="selected" id="selected"></div>
+              <div id="candidates"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const fleetPositions = [
+      [4.2, 5.6], [8.8, 3.4], [13.5, 7.8], [18.4, 4.8],
+      [24.2, 6.4], [29.7, 3.9], [35.6, 8.2],
+      [5.8, 18.7], [14.1, 15.2], [22.6, 24.4], [30.8, 19.6], [36.4, 28.1]
+    ];
+    const drivers = fleetPositions.map(([x, y], index) => ({
+      driver_id: `Driver ${index + 1}`,
+      x, y,
+      idle_seconds: 60 + ((index * 47) % 420),
+      acceptance_rate: .72 + ((index * 13) % 24) / 100
+    }));
+    fetch("/metadata").then(response => response.json()).then(metadata => {
+      document.getElementById("signal-model").textContent = metadata.model_loaded ? "Utility GBDT" : "Heuristic";
+      document.getElementById("signal-features").textContent = metadata.feature_count || "--";
+      document.getElementById("signal-fleet").textContent = metadata.fleet_size;
+      document.getElementById("signal-city").textContent = `${metadata.city_size_km} x ${metadata.city_size_km} km`;
+      document.getElementById("signal-radius").textContent = `${metadata.nearby_radius_km} km`;
+    }).catch(() => { document.getElementById("signal-model").textContent = "Offline"; });
+    const map = L.map("map", { crs: L.CRS.Simple, minZoom: -1, maxZoom: 6, zoomControl: false, scrollWheelZoom: false });
+    const bounds = [[0, 0], [40, 40]];
+    function fitCityToMap() {
+      map.invalidateSize({ pan: false });
+      map.fitBounds(bounds, { padding: [8, 8], animate: false });
+    }
+    fitCityToMap();
+    window.addEventListener("load", fitCityToMap);
+    window.addEventListener("resize", fitCityToMap);
+    setTimeout(fitCityToMap, 50);
+    L.rectangle(bounds, { color: "#8eb49a", weight: 1, fillColor: "#e8f0e8", fillOpacity: .55 }).addTo(map);
+    for (let coordinate = 0; coordinate <= 40; coordinate += 5) {
+      L.polyline([[coordinate, 0], [coordinate, 40]], { color: "#cbdccb", weight: 1, opacity: .8 }).addTo(map);
+      L.polyline([[0, coordinate], [40, coordinate]], { color: "#cbdccb", weight: 1, opacity: .8 }).addTo(map);
+    }
+    const driverMarkers = drivers.map(d => L.circleMarker([d.y, d.x], {
+      radius: 7, color: "#1f6b4d", weight: 2, fillColor: "#75b995", fillOpacity: .95
+    }).bindTooltip(`${d.driver_id} · ${Math.round(d.acceptance_rate * 100)}% acceptance`).addTo(map));
+    let pickupMarker = L.circleMarker([3, 4], {
+      radius: 9, color: "#b75232", weight: 3, fillColor: "#e27d4f", fillOpacity: 1
+    }).bindTooltip("Pickup point").addTo(map);
+    let routeLine = L.polyline([], { color: "#17211b", weight: 3, opacity: .9, dashArray: "7 6" }).addTo(map);
+    let routeLabel = L.marker([3, 4], {
+      icon: L.divIcon({ className: "route-label", html: "", iconSize: [230, 32], iconAnchor: [-10, 16] }),
+      interactive: false
+    }).addTo(map);
+    function updateRoute() {
+      const pickupX = Number(document.getElementById("pickup-x").value);
+      const pickupY = Number(document.getElementById("pickup-y").value);
+      const nearest = drivers.reduce((candidate, driver) => {
+        return distanceToPickup(driver) < distanceToPickup(candidate) ? driver : candidate;
+      }, drivers[0]);
+      const distance = distanceToPickup(nearest);
+      const labelOnLeft = pickupX > 25;
+      routeLine.setLatLngs([[pickupY, pickupX], [nearest.y, nearest.x]]);
+      routeLabel.setLatLng([pickupY, pickupX]);
+      routeLabel.setIcon(L.divIcon({
+        className: "route-label",
+        html: `${nearest.driver_id} · ${distance.toFixed(1)} km · ETA ${(distance * 2.5).toFixed(1)} min`,
+        iconSize: [230, 32],
+        iconAnchor: labelOnLeft ? [240, 16] : [-10, 16]
+      }));
+    }
+    function setPickupPoint(x, y) {
+      const safeX = Math.max(0, Math.min(40, Number(x)));
+      const safeY = Math.max(0, Math.min(40, Number(y)));
+      document.getElementById("pickup-x").value = safeX.toFixed(1);
+      document.getElementById("pickup-y").value = safeY.toFixed(1);
+      pickupMarker.setLatLng([safeY, safeX]);
+      refreshNearby();
+      updateRoute();
+    }
+    function distanceToPickup(driver) {
+      const x = Number(document.getElementById("pickup-x").value);
+      const y = Number(document.getElementById("pickup-y").value);
+      return Math.hypot(driver.x - x, driver.y - y);
+    }
+    function refreshNearby() {
+      const nearby = drivers.filter(driver => distanceToPickup(driver) <= 7);
+      document.getElementById("nearby-count").textContent = `${nearby.length} within 7 km`;
+      driversEl.innerHTML = drivers
+        .slice()
+        .sort((a, b) => distanceToPickup(a) - distanceToPickup(b))
+        .slice(0, 6)
+          .map(d => `<article class="driver"><div class="driver-top"><span class="driver-name">${d.driver_id}</span><span class="available">${distanceToPickup(d).toFixed(1)} km</span></div><div class="driver-meta"><span class="driver-eta">ETA ${(distanceToPickup(d) * 2.5).toFixed(1)} min</span><br>Grid position ${d.x.toFixed(1)}, ${d.y.toFixed(1)}<br>Idle ${Math.round(d.idle_seconds / 60)} min · Acceptance ${Math.round(d.acceptance_rate * 100)}%</div></article>`)
+        .join("");
+    }
+    function moveDrivers() {
+      drivers.forEach((driver, index) => {
+        driver.x = Math.max(.5, Math.min(39.5, driver.x + Math.sin(Date.now() / 2500 + index) * .035));
+        driver.y = Math.max(.5, Math.min(39.5, driver.y + Math.cos(Date.now() / 2900 + index) * .035));
+        driverMarkers[index].setLatLng([driver.y, driver.x]);
+      });
+      refreshNearby();
+      updateRoute();
+    }
+    map.on("click", event => setPickupPoint(event.latlng.lng, event.latlng.lat));
+    document.getElementById("pickup-x").addEventListener("change", event => setPickupPoint(event.target.value, document.getElementById("pickup-y").value));
+    document.getElementById("pickup-y").addEventListener("change", event => setPickupPoint(document.getElementById("pickup-x").value, event.target.value));
+    const driversEl = document.getElementById("drivers");
+    refreshNearby();
+    updateRoute();
+    setInterval(moveDrivers, 1200);
+
+    document.getElementById("match-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = document.getElementById("submit");
+      const error = document.getElementById("error");
+      error.style.display = "none";
+      button.disabled = true;
+      try {
+        const response = await fetch("/match", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          request_id: document.getElementById("request-id").value,
+          pickup_x: Number(document.getElementById("pickup-x").value),
+          pickup_y: Number(document.getElementById("pickup-y").value),
+          open_requests: Number(document.getElementById("open-requests").value),
+          drivers
+        })});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Matching request failed");
+        document.getElementById("selected").textContent = data.selected_driver_id;
+        document.getElementById("candidates").innerHTML = data.candidates
+          .sort((a, b) => b.score - a.score)
+          .map(c => `<div class="candidate"><div class="candidate-top"><span>${c.driver_id}</span><span class="score">${c.score}</span></div><div class="driver-meta">${c.distance_km} km away · ETA ${c.eta_minutes} min</div></div>`).join("");
+        document.getElementById("result").classList.add("visible");
+      } catch (err) { error.textContent = err.message; error.style.display = "block"; }
+      finally { button.disabled = false; }
+    });
+  </script>
+</body>
+</html>

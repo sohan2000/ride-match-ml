@@ -14,6 +14,21 @@ def test_health_reports_service_without_model():
     assert response.json()["service"] == "ride-match"
 
 
+def test_metadata_reports_matching_system_contract():
+    response = client.get("/metadata")
+
+    assert response.status_code == 200
+    assert response.json()["fleet_size"] == 12
+    assert response.json()["city_size_km"] == 40
+
+
+def test_ui_is_served():
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "RideMatch Dispatch" in response.text
+
+
 def test_match_selects_nearest_driver_with_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "MODEL_PATH", tmp_path / "missing-model.pkl")
     response = client.post(

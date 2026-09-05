@@ -8,6 +8,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from src.features.build_features import LABEL_COLUMN, build_feature_table
@@ -18,6 +19,7 @@ app = FastAPI(title="RideMatch API", version="0.2.0")
 MODEL_PATH = Path(
     os.getenv("RIDEMATCH_MODEL_PATH", str(Path(__file__).resolve().parents[2] / "models" / "model.pkl"))
 )
+UI_PATH = Path(__file__).resolve().parents[2] / "ui" / "index.html"
 
 
 class DriverInput(BaseModel):
@@ -25,6 +27,7 @@ class DriverInput(BaseModel):
     x: float
     y: float
     idle_seconds: int = Field(default=0, ge=0)
+    acceptance_rate: float = Field(default=0.8, ge=0.0, le=1.0)
 
 
 class MatchRequest(BaseModel):
@@ -39,6 +42,30 @@ class MatchRequest(BaseModel):
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "ride-match", "model_loaded": MODEL_PATH.exists()}
+
+
+@app.get("/metadata")
+def metadata() -> dict:
+    model_type = "heuristic_nearest_driver"
+    feature_count = 0
+    if MODEL_PATH.exists():
+        artifact = joblib.load(MODEL_PATH)
+        if isinstance(artifact, dict):
+            model_type = artifact.get("model_type", model_type)
+            feature_count = len(artifact.get("feature_columns", []))
+    return {
+        "model_loaded": MODEL_PATH.exists(),
+        "model_type": model_type,
+        "feature_count": feature_count,
+        "fleet_size": 12,
+        "city_size_km": 40,
+        "nearby_radius_km": 7,
+    }
+
+
+@app.get("/")
+def ui() -> FileResponse:
+    return FileResponse(UI_PATH)
 
 
 def _model_score(model: object, row: dict) -> float:
@@ -62,6 +89,11 @@ def match(request: MatchRequest) -> dict:
     candidate_rows = []
     for driver in request.drivers:
         distance = ((driver.x - request.pickup_x) ** 2 + (driver.y - request.pickup_y) ** 2) ** 0.5
+        pickup_zone = (int(request.pickup_x // 5), int(request.pickup_y // 5))
+        pickup_zone_supply = sum(
+            (int(candidate.x // 5), int(candidate.y // 5)) == pickup_zone
+            for candidate in request.drivers
+        )
         candidate_rows.append(
             {
                 "driver_id": driver.driver_id,
@@ -71,6 +103,10 @@ def match(request: MatchRequest) -> dict:
                 "available_drivers": len(request.drivers),
                 "open_requests": request.open_requests,
                 "hour_of_day": event_time.hour,
+                "driver_acceptance_rate": driver.acceptance_rate,
+                "same_pickup_zone": int((int(driver.x // 5), int(driver.y // 5)) == pickup_zone),
+                "pickup_zone_supply": pickup_zone_supply,
+                "pickup_zone_demand_supply_ratio": request.open_requests / max(1, pickup_zone_supply),
             }
         )
 

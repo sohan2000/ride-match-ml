@@ -6,3 +6,5 @@ __pycache__/
 data/processed/*.csv
 .DS_Store
 .env
+.vercel
+.env*

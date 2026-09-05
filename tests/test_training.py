@@ -5,6 +5,7 @@ from src.models.evaluate import evaluate_ranking_policy
 from src.models.train_utility_model import train_utility_model
 from src.models.tune_utility import tune_utility_weights
 from src.models.policy_eval import compare_policies
+from src.models.feature_importance import permutation_feature_importance
 from src.simulator.generate_data import generate_dataset
 
 
@@ -59,3 +60,22 @@ def test_policy_replay_returns_actual_operational_metrics(tmp_path: Path):
 
     assert set(results["policy"]) == {"nearest", "model"}
     assert (results["utilization"] >= 0).all()
+    assert {"driver_rejection_rate", "rider_cancellation_rate"}.issubset(results.columns)
+    assert "policy_kpi_score" in results.columns
+
+
+def test_permutation_importance_returns_all_online_features(tmp_path: Path):
+    input_path = tmp_path / "candidates.csv"
+    output_path = tmp_path / "utility_model.pkl"
+    generate_dataset(num_drivers=8, num_riders=80, steps=40, seed=11).to_csv(input_path, index=False)
+    train_utility_model(str(input_path), str(output_path))
+
+    importance = permutation_feature_importance(str(output_path), str(input_path), repeats=2)
+
+    assert len(importance) == 12
+    assert set(importance["feature"]) == set([
+        "distance_km", "eta_minutes", "driver_idle_minutes", "available_drivers",
+        "open_requests", "demand_supply_ratio", "hour_of_day", "is_peak",
+        "driver_acceptance_rate",
+        "same_pickup_zone", "pickup_zone_supply", "pickup_zone_demand_supply_ratio",
+    ])
