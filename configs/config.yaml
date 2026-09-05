@@ -1,0 +1,15 @@
+project_name: ride-match-ml
+city:
+  width: 20
+  height: 20
+simulation:
+  drivers: 40
+  riders: 40
+  seed: 42
+model:
+  type: random_forest
+  n_estimators: 200
+  random_state: 42
+api:
+  host: 0.0.0.0
+  port: 8000
