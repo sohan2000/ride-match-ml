@@ -5,6 +5,7 @@ services:
       - "8000:8000"
     environment:
       PYTHONUNBUFFERED: "1"
+      RIDEMATCH_MODEL_PATH: "/app/models/utility_model.pkl"
     volumes:
       - ./models:/app/models:ro
       - ./data:/app/data

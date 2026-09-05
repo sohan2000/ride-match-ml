@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
-import pickle
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -14,7 +15,9 @@ from src.features.build_features import LABEL_COLUMN, build_feature_table
 
 logger = logging.getLogger("ride_match.service")
 app = FastAPI(title="RideMatch API", version="0.2.0")
-MODEL_PATH = Path(__file__).resolve().parents[2] / "models" / "model.pkl"
+MODEL_PATH = Path(
+    os.getenv("RIDEMATCH_MODEL_PATH", str(Path(__file__).resolve().parents[2] / "models" / "model.pkl"))
+)
 
 
 class DriverInput(BaseModel):
@@ -73,8 +76,8 @@ def match(request: MatchRequest) -> dict:
 
     model = None
     if MODEL_PATH.exists():
-        with MODEL_PATH.open("rb") as model_file:
-            model = pickle.load(model_file)
+        artifact = joblib.load(MODEL_PATH)
+        model = artifact["model"] if isinstance(artifact, dict) else artifact
 
     scored_candidates = []
     for row in candidate_rows:

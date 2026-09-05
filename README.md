@@ -69,6 +69,9 @@ ride-match-ml/
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── train_model.py
+│   │   ├── train_utility_model.py
+│   │   ├── policy_eval.py
+│   │   ├── tune_utility.py
 │   │   └── evaluate.py
 │   ├── service/
 │   │   ├── __init__.py
@@ -96,7 +99,10 @@ pip install -r requirements.txt
 python -m pytest
 python src/simulator/generate_data.py --output data/processed/synthetic_matches.csv
 python src/models/train_model.py --input data/processed/synthetic_matches.csv --output models/model.pkl
+python src/models/train_utility_model.py --input data/processed/synthetic_matches.csv --output models/utility_model.pkl
 python src/models/evaluate.py --model models/model.pkl --input data/processed/synthetic_matches.csv
+python src/models/evaluate.py --ranking --model models/model.pkl --input data/processed/synthetic_matches.csv
+python src/models/evaluate.py --ranking --model models/utility_model.pkl --input data/processed/synthetic_matches.csv
 uvicorn src.service.main:app --reload
 ```
 
@@ -151,11 +157,70 @@ Recommended experiment order:
 1. Inspect label balance, candidate counts, ETA, supply, demand, and time-based
    train/test drift.
 2. Establish nearest-driver metrics as the baseline.
-3. Train a class-weighted Random Forest or gradient-boosted tabular model.
+3. Train the GBDT classifier with the shared eight-feature vector. XGBoost or
+   LightGBM can be evaluated later without changing the serving contract.
 4. Select one candidate per request and compare average wait, p90 wait, SLA hit
    rate, cancellation rate, coverage, and utilization.
 5. Add a utility target that trades off rider wait and driver utilization, then
    promote the best reproducible implementation into `src/models/`.
+
+The `--ranking` evaluation reports model top-1 agreement with the nearest-driver
+label, model versus baseline ETA, ETA delta, and SLA hit rate. Treat a positive
+ETA delta as a regression even when row-level precision or recall improves. It
+also reports cancellation and utilization proxies. These are proxies because
+the current simulator does not yet persist a complete per-driver trajectory;
+do not present them as production-grade utilization or cancellation estimates.
+
+Run a multi-scenario utility-weight sweep with:
+
+```python
+from src.models.tune_utility import tune_utility_weights
+
+results = tune_utility_weights()
+results.sort_values("eta_delta_minutes").head()
+```
+
+For a full trajectory replay, run:
+
+```python
+from src.models.policy_eval import compare_policies
+
+compare_policies(
+   "models/utility_model.pkl",
+   num_drivers=40,
+   num_riders=400,
+   steps=240,
+   seed=42,
+)
+```
+
+This replays the identical request stream under nearest-driver and utility
+policies while evolving driver busy state independently. Coverage,
+cancellation rate, wait, p90 wait, SLA rate, and utilization are measured from
+each policy's assignment outcomes.
+
+Reference dynamic-simulator run (`600` requests, `40` drivers, `1,440` minutes,
+seed `42`):
+
+| Metric | Nearest | Utility GBDT |
+| --- | ---: | ---: |
+| Coverage | 99.17% | 100.00% |
+| Average wait | 6.910 min | 6.816 min |
+| P90 wait | 13.134 min | 12.607 min |
+| SLA hit rate | 46.17% | 42.17% |
+| Cancellation rate | 0.83% | 0.00% |
+| Utilization | 0.2250 | 0.2346 |
+
+This is a synthetic reference result, not a claim about real Lyft traffic. The
+utility policy improves coverage, average wait, p90 wait, cancellation rate,
+and utilization in this run, while its five-minute SLA rate is lower because
+the utility objective currently trades some short waits for broader assignment
+and utilization. Report that tradeoff rather than selecting a model on one KPI.
+
+The utility regressor is an improved ranking experiment, not a guaranteed
+business improvement. Its current synthetic utility is intentionally simple;
+the next Colab task is to vary the wait, ride-duration, cancellation, and idle
+fairness weights and select a policy using request-level KPIs.
 
 Colab Pro is useful for larger simulations, repeated scenario sweeps, and
 hyperparameter searches. A GPU is not required for the first tabular models;
@@ -174,6 +239,10 @@ The response includes the selected driver, its score, and every candidate's
 distance, ETA, and score. Before a model artifact exists, the service uses the
 documented nearest-driver heuristic and labels the response
 `heuristic_fallback`.
+
+Compose serves `models/utility_model.pkl` by default. Set
+`RIDEMATCH_MODEL_PATH=/app/models/model.pkl` when you want to compare the
+classifier artifact instead.
 
 ## MVP business KPIs
 
@@ -222,12 +291,27 @@ information known at matching time plus delayed labels:
 
 `event_time`, `request_id`, `driver_id`, `distance_km`, `eta_minutes`,
 `driver_idle_minutes`, `available_drivers`, `open_requests`, `hour_of_day`,
-`matched`, `realized_wait_minutes`, and `cancelled`.
+`matched`, `realized_wait_minutes`, `cancelled`, and `candidate_utility`.
 
-The MVP model predicts `matched` or a match probability. Candidate selection
-uses the highest model score, with nearest-driver selection as the baseline.
+The MVP model is a scikit-learn `GradientBoostingClassifier` that predicts
+`matched` probability. Candidate selection uses the highest probability,
+with nearest-driver selection as the baseline. The online feature vector is
+`distance_km`, `eta_minutes`, `driver_idle_minutes`, `available_drivers`,
+`open_requests`, `demand_supply_ratio`, `hour_of_day`, and `is_peak`.
 `realized_wait_minutes` and `cancelled` are evaluation labels and must not be
 used as online features.
+
+`candidate_utility` is a delayed, policy-independent synthetic target for the
+next experiment. The current simulator defines it as:
+
+`-eta_minutes - 0.25 * ride_minutes + 0.05 * driver_idle_minutes - 12.0 * max(0, (eta_minutes - 5) / 5)`.
+
+The final term penalizes long-ETA cancellation risk, while the idle term adds a
+small fairness incentive. These weights are experiment parameters, not facts
+about real riders or drivers. Train it with
+`src/models/train_utility_model.py` and rank by predicted utility; compare that
+policy with the classifier and nearest-driver baseline rather than assuming it
+is better.
 
 ### `AssignmentOutcome`
 
@@ -240,9 +324,10 @@ The delayed result of the selected assignment:
 
 The first complete experiment should stay deliberately narrow:
 
-1. Simulate a 20x20 city in discrete one-minute steps with 40 drivers and a
-   Poisson-like stream of rider requests. Drivers are `available`, `assigned`,
-   or `offline`; requests can be waiting, matched, cancelled, or completed.
+1. Simulate a 20x20 city in discrete one-minute steps with 40 moving drivers
+   and a rush-hour-weighted stream of rider requests. Drivers are `available`,
+   `assigned`, or `offline`; requests can be waiting, matched, cancelled, or
+   completed.
 2. Build candidate features from distance, ETA, driver idle time, hour of day,
    available-driver count, and open-request count. Keep pickup/dropoff
    distance available for the ride-duration label, but do not leak outcomes

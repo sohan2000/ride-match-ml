@@ -24,6 +24,8 @@ def test_build_feature_table_uses_only_online_features_and_match_label():
     assert list(features.columns) == ONLINE_FEATURE_COLUMNS + ["matched"]
     assert "realized_wait_minutes" not in features.columns
     assert "cancelled" not in features.columns
+    assert features.loc[0, "demand_supply_ratio"] == 0.5
+    assert features.loc[0, "is_peak"] == 1
 
 
 def test_build_feature_table_reports_old_schema_columns():

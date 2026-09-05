@@ -68,6 +68,7 @@ class CandidateMatchRecord:
     matched: int
     realized_wait_minutes: float
     cancelled: int
+    candidate_utility: float
 
     def to_dict(self) -> dict:
         return asdict(self) | {"event_time": self.event_time.isoformat()}
