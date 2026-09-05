@@ -12,6 +12,15 @@ This project demonstrates a clean end-to-end ML workflow for a ride-sharing fulf
 - an API for serving match decisions
 - Dockerized deployment for production-style shipping
 
+## Architecture
+
+![RideMatch architecture](docs/architecture.svg)
+
+The same feature builder is used during training, policy replay, and API
+serving. The simulator supplies request-time state and delayed outcomes; the
+policy evaluator replays the nearest-driver baseline and learned policy on the
+same seeded request stream before computing KPIs.
+
 ## Data strategy
 
 RideMatch starts with a self-contained simulator rather than a public trip
@@ -55,50 +64,7 @@ ride-match-ml/
 ├── configs/
 │   └── config.yaml
 ├── data/
-│   ├── raw/
-│   └── processed/
-├── models/                  # generated artifacts; ignored by Git
-│   └── model.pkl            # created locally or in Colab
-├── reports/                 # small reproducible reference summaries
-│   ├── policy_replay_by_seed.csv
-│   └── policy_replay_summary.csv
-├── src/
-│   ├── __init__.py
-│   ├── simulator/
-│   │   ├── __init__.py
-│   │   ├── city.py
-│   │   ├── generate_data.py
-│   │   └── schema.py
-│   ├── features/
-│   │   ├── __init__.py
-│   │   └── build_features.py
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── train_model.py
-│   │   ├── train_utility_model.py
-│   │   ├── feature_importance.py
-│   │   ├── policy_eval.py
-│   │   ├── tune_utility.py
-│   │   ├── create_reference_reports.py
-│   │   └── evaluate.py
-│   ├── service/
-│   │   ├── __init__.py
-│   │   └── main.py
-│   └── utils/
-│       ├── __init__.py
-│       └── metrics.py
-├── ui/
-│   └── index.html
-├── tests/
-│   ├── test_metrics.py
-│   ├── test_features.py
-│   ├── test_schema.py
-│   ├── test_service.py
-│   └── test_simulator.py
-└── notebooks/
-    └── exploration.ipynb
-```
-
+![RideMatch architecture](docs/architecture.svg)
 ## Quick start
 
 ```bash
@@ -117,19 +83,19 @@ uvicorn src.service.main:app --reload
 ```
 
 Open http://localhost:8000 for the interactive RideMatch dispatch console.
-Enter pickup coordinates and nearby request pressure, then click **Find my
-driver** to send a real request to `POST /match`. The screen shows the
-available-driver pool, selected driver, ETA, and every candidate score.
+Enter pickup coordinates and nearby ride pressure. Pin drops and coordinate
+changes automatically send a request to `POST /match`. The screen shows the
+available-driver pool, selected driver, ETA, and candidate scores.
 The console also surfaces the serving model, online feature count, fleet size,
 city grid, and nearby search radius so the UI communicates the system behind
 each decision.
-The map contains a 12-cab simulated fleet. Cabs move continuously within the
+The map contains a 20-cab simulated fleet. Cabs move continuously within the
 40 km city grid, and clicking a new pickup location moves the pin, updates the
 nearby-driver count and sorted driver list, and changes the candidate distances
 used by the next match request.
 The demo ETA is intentionally transparent: it is straight-line grid distance
-times `2.5 minutes/km` (about `24 km/h`), not a road-network route. Nearby cards
-show both values so the estimate can be checked directly. When a pickup pin is
+times `2.5 minutes/km` (about `24 km/h`), not a road-network route. The driver
+table shows both values so the estimate can be checked directly. When a pickup pin is
 set, the map draws a black straight connector to the nearest moving driver and
 labels that connector with the driver, distance, and ETA.
 FastAPI's API documentation remains available at http://localhost:8000/docs.

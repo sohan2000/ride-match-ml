@@ -18,7 +18,7 @@ def test_metadata_reports_matching_system_contract():
     response = client.get("/metadata")
 
     assert response.status_code == 200
-    assert response.json()["fleet_size"] == 12
+    assert response.json()["fleet_size"] == 20
     assert response.json()["city_size_km"] == 40
 
 

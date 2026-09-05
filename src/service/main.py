@@ -57,7 +57,7 @@ def metadata() -> dict:
         "model_loaded": MODEL_PATH.exists(),
         "model_type": model_type,
         "feature_count": feature_count,
-        "fleet_size": 12,
+        "fleet_size": 20,
         "city_size_km": 40,
         "nearby_radius_km": 7,
     }
