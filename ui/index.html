@@ -267,13 +267,14 @@
     }
     function moveDrivers() {
       drivers.forEach((driver, index) => {
-        driver.x = Math.max(.5, Math.min(39.5, driver.x + Math.sin(Date.now() / 2500 + index) * .035));
-        driver.y = Math.max(.5, Math.min(39.5, driver.y + Math.cos(Date.now() / 2900 + index) * .035));
+        driver.x = Math.max(.5, Math.min(39.5, driver.x + Math.sin(Date.now() / 1800 + index) * .09));
+        driver.y = Math.max(.5, Math.min(39.5, driver.y + Math.cos(Date.now() / 2100 + index) * .09));
         driverMarkers[index].setLatLng([driver.y, driver.x]);
       });
       refreshNearby();
       updateFleetControls();
       updateRoute();
+      runMatch();
     }
     map.on("click", event => setPickupPoint(event.latlng.lng, event.latlng.lat));
     document.getElementById("pickup-x").addEventListener("change", event => setPickupPoint(event.target.value, document.getElementById("pickup-y").value));
@@ -282,7 +283,7 @@
     refreshNearby();
     updateRoute();
     updateFleetControls();
-    setInterval(moveDrivers, 1200);
+    setInterval(moveDrivers, 700);
 
     async function runMatch() {
       const requestSequence = ++matchRequestSequence;

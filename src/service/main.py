@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from src.features.build_features import LABEL_COLUMN, build_feature_table
+from src.features.build_features import LABEL_COLUMN, ONLINE_FEATURE_COLUMNS, build_feature_table
 
 
 logger = logging.getLogger("ride_match.service")
@@ -47,7 +47,7 @@ def health() -> dict:
 @app.get("/metadata")
 def metadata() -> dict:
     model_type = "heuristic_nearest_driver"
-    feature_count = 0
+    feature_count = len(ONLINE_FEATURE_COLUMNS)
     if MODEL_PATH.exists():
         artifact = joblib.load(MODEL_PATH)
         if isinstance(artifact, dict):

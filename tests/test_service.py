@@ -21,6 +21,7 @@ def test_metadata_reports_matching_system_contract():
     assert response.status_code == 200
     assert response.json()["fleet_size"] == 20
     assert response.json()["city_size_km"] == 40
+    assert response.json()["feature_count"] == 12
 
 
 def test_ui_is_served():
