@@ -21,6 +21,9 @@ serving. The simulator supplies request-time state and delayed outcomes; the
 policy evaluator replays the nearest-driver baseline and learned policy on the
 same seeded request stream before computing KPIs.
 
+For the full model card, score definitions, metric interactions, explainability
+surfaces, and reproduction commands, see [Models and Metrics](models/README.md).
+
 ## Data strategy
 
 RideMatch starts with a self-contained simulator rather than a public trip
@@ -64,7 +67,23 @@ ride-match-ml/
 ├── configs/
 │   └── config.yaml
 ├── data/
-![RideMatch architecture](docs/architecture.svg)
+│   └── processed/             # generated locally; ignored by Git
+├── docs/
+│   └── architecture.svg
+├── notebooks/
+│   └── exploration.ipynb
+├── reports/                   # committed reference summaries
+├── src/
+│   ├── features/
+│   ├── models/
+│   ├── service/
+│   ├── simulator/
+│   └── utils/
+├── tests/
+└── ui/
+   └── index.html
+```
+
 ## Quick start
 
 ```bash
@@ -83,9 +102,17 @@ uvicorn src.service.main:app --reload
 ```
 
 Open http://localhost:8000 for the interactive RideMatch dispatch console.
-Enter pickup coordinates and nearby ride pressure. Pin drops and coordinate
+Enter pickup coordinates and available rider demand. Pin drops and coordinate
 changes automatically send a request to `POST /match`. The screen shows the
 available-driver pool, selected driver, ETA, and candidate scores.
+The UI also accepts nearby rider demand and returns an estimated fare. Fare is
+separate from the matching utility score and uses distance plus a capped demand
+surge multiplier based on nearby riders divided by available drivers.
+Nearby riders and the demo fleet are bounded from `1` to `100`; clearing the
+nearby-riders field restores `1`. Adding available drivers lowers demand
+pressure and therefore lowers the estimate, all else equal. The fare is an
+estimate rather than a completed-ride charge; fare optimization is not part of
+the model policy.
 The console also surfaces the serving model, online feature count, fleet size,
 city grid, and nearby search radius so the UI communicates the system behind
 each decision.
@@ -93,11 +120,18 @@ The map contains a 20-cab simulated fleet. Cabs move continuously within the
 40 km city grid, and clicking a new pickup location moves the pin, updates the
 nearby-driver count and sorted driver list, and changes the candidate distances
 used by the next match request.
+Use `+` and `-` beside **Live driver data** to add or remove local demo drivers.
+New drivers spawn at random coordinates across the full 40 km city rather than
+being placed beside the requester; the map, driver table, fleet count, route,
+and next match update together.
 The demo ETA is intentionally transparent: it is straight-line grid distance
 times `2.5 minutes/km` (about `24 km/h`), not a road-network route. The driver
 table shows both values so the estimate can be checked directly. When a pickup pin is
 set, the map draws a black straight connector to the nearest moving driver and
 labels that connector with the driver, distance, and ETA.
+The connector also shows the same pre-ride fare estimate and demand multiplier
+used by the API. The demo starts with 20 drivers, while the simulator's
+reproducible training and replay defaults use 40 drivers.
 FastAPI's API documentation remains available at http://localhost:8000/docs.
 
 ## Vercel deployment
@@ -284,10 +318,11 @@ curl -X POST http://localhost:8000/match \
    -d '{"request_id":"req-demo","pickup_x":4.0,"pickup_y":3.0,"drivers":[{"driver_id":"d1","x":2.0,"y":3.0,"idle_seconds":120},{"driver_id":"d2","x":8.0,"y":3.0,"idle_seconds":60}]}'
 ```
 
-The response includes the selected driver, its score, and every candidate's
-distance, ETA, and score. Before a model artifact exists, the service uses the
-documented nearest-driver heuristic and labels the response
-`heuristic_fallback`.
+The response includes the selected driver, its utility score, pre-ride fare,
+demand multiplier, and every candidate's distance, ETA, and score. The service
+loads `models/utility_model.pkl` by default. Before a model artifact exists, it
+uses the nearest-driver heuristic and labels the response
+`heuristic_fallback`. The API accepts 1–100 drivers and 1–100 open requests.
 
 Compose serves `models/utility_model.pkl` by default. Set
 `RIDEMATCH_MODEL_PATH=/app/models/model.pkl` when you want to compare the
@@ -295,13 +330,11 @@ classifier artifact instead.
 
 ## MVP business KPIs
 
-The project evaluates model quality using marketplace-inspired metrics:
-
-- wait time reduction vs baseline
-- match acceptance rate
-- utilization improvement
-- average ETA gap
-- assignment success score
+The policy replay evaluates nearest-driver and learned-policy decisions on the
+same seeded request stream using coverage, average wait, p90 wait, SLA hit rate,
+driver rejection, rider cancellation, total cancellation, utilization, and the
+composite `policy_kpi_score`. Utility validation MAE and classifier metrics are
+diagnostic; request-level replay KPIs decide whether a policy is better.
 
 ## MVP data contract
 
@@ -340,11 +373,16 @@ information known at matching time plus delayed labels:
 
 `event_time`, `request_id`, `driver_id`, `distance_km`, `eta_minutes`,
 `driver_idle_minutes`, `available_drivers`, `open_requests`, `hour_of_day`,
-`matched`, `realized_wait_minutes`, `cancelled`, and `candidate_utility`.
+`matched`, `realized_wait_minutes`, `cancelled`, `candidate_utility`,
+`driver_acceptance_rate`, `same_pickup_zone`, `pickup_zone_supply`, and
+`pickup_zone_demand_supply_ratio`.
 
-The MVP model is a scikit-learn `GradientBoostingClassifier` that predicts
-`matched` probability. Candidate selection uses the highest probability,
-with nearest-driver selection as the baseline. The online feature vector is
+The repository contains two scikit-learn GBDT artifacts. The classifier is a
+`GradientBoostingClassifier` that predicts `matched` probability, while the
+serving default is a `GradientBoostingRegressor` trained on `candidate_utility`.
+Candidate selection uses the highest score from the loaded artifact, with
+nearest-driver selection as the baseline. Both artifacts use the same
+12-column online feature vector:
 `distance_km`, `eta_minutes`, `driver_idle_minutes`, `available_drivers`,
 `open_requests`, `demand_supply_ratio`, `hour_of_day`, `is_peak`, and the
 historical `driver_acceptance_rate` available before the request. The rate is
@@ -356,10 +394,15 @@ ratio. Zones are fixed 5 km by 5 km cells in the 40 km by 40 km city.
 `realized_wait_minutes` and `cancelled` are evaluation labels and must not be
 used as online features.
 
+The API additionally returns a pre-ride fare estimate. Its base is `$3.00`,
+plus `$1.45 * distance_km` and `$0.18 * eta_minutes`, multiplied by a capped
+surge of `min(2.5, 1 + 0.25 * open_requests / available_drivers)`. This is a
+transparent marketplace signal for the demo, separate from utility ranking.
+
 `candidate_utility` is a delayed, policy-independent synthetic target for the
 next experiment. The current simulator defines it as:
 
-`-eta_minutes - 0.25 * ride_minutes + 0.05 * driver_idle_minutes - 12.0 * cancellation_risk + 2.0 * acceptance_probability - 0.5 * demand_pressure - peak_friction`.
+`-eta_minutes - 0.25 * ride_minutes + 0.05 * driver_idle_minutes - 12.0 * cancellation_risk + 2.0 * acceptance_probability + 3.0 * historical_acceptance - 12.0 * rider_cancellation_probability - 0.5 * demand_pressure - peak_friction + 1.5 * same_pickup_zone - 0.25 * local_demand_supply_ratio`.
 
 The cancellation terms penalize long-ETA and rider-cancellation risk, while
 idle time and historical driver acceptance add fairness and reliability

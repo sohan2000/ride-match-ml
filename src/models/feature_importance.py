@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+
 import joblib
 import pandas as pd
 from sklearn.inspection import permutation_importance
@@ -40,3 +42,12 @@ def permutation_feature_importance(
         "importance_mean": result.importances_mean,
         "importance_std": result.importances_std,
     }).sort_values("importance_mean", ascending=False, ignore_index=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Compute held-out RideMatch feature importance")
+    parser.add_argument("--model", default="models/utility_model.pkl")
+    parser.add_argument("--input", default="data/processed/synthetic_matches.csv")
+    parser.add_argument("--repeats", type=int, default=10)
+    args = parser.parse_args()
+    print(permutation_feature_importance(args.model, args.input, repeats=args.repeats).to_string(index=False))

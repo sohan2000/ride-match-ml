@@ -35,8 +35,8 @@ class MatchRequest(BaseModel):
     pickup_x: float
     pickup_y: float
     event_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    open_requests: int = Field(default=1, ge=1)
-    drivers: list[DriverInput]
+    open_requests: int = Field(default=1, ge=1, le=100)
+    drivers: list[DriverInput] = Field(..., min_length=1, max_length=100)
 
 
 @app.get("/health")
@@ -78,6 +78,13 @@ def _model_score(model: object, row: dict) -> float:
     return float(model.predict(values)[0])
 
 
+def _estimate_fare(distance_km: float, open_requests: int, driver_count: int) -> tuple[float, float]:
+    demand_pressure = open_requests / max(1, driver_count)
+    surge_multiplier = min(2.5, 1.0 + 0.25 * demand_pressure)
+    base_fare = 3.0 + 1.45 * distance_km + 0.18 * (distance_km * 2.5)
+    return round(base_fare * surge_multiplier, 2), round(surge_multiplier, 2)
+
+
 @app.post("/match")
 def match(request: MatchRequest) -> dict:
     if not request.drivers:
@@ -107,6 +114,8 @@ def match(request: MatchRequest) -> dict:
                 "same_pickup_zone": int((int(driver.x // 5), int(driver.y // 5)) == pickup_zone),
                 "pickup_zone_supply": pickup_zone_supply,
                 "pickup_zone_demand_supply_ratio": request.open_requests / max(1, pickup_zone_supply),
+                "estimated_fare": _estimate_fare(distance, request.open_requests, len(request.drivers))[0],
+                "surge_multiplier": _estimate_fare(distance, request.open_requests, len(request.drivers))[1],
             }
         )
 
@@ -124,6 +133,8 @@ def match(request: MatchRequest) -> dict:
                 "distance_km": round(row["distance_km"], 3),
                 "eta_minutes": round(row["eta_minutes"], 3),
                 "score": round(score, 4),
+                "estimated_fare": row["estimated_fare"],
+                "surge_multiplier": row["surge_multiplier"],
             }
         )
 
@@ -133,6 +144,8 @@ def match(request: MatchRequest) -> dict:
         "request_id": request.request_id,
         "selected_driver_id": selected["driver_id"],
         "selected_score": selected["score"],
+        "estimated_fare": selected["estimated_fare"],
+        "surge_multiplier": selected["surge_multiplier"],
         "candidates": scored_candidates,
     }
     logger.info("match_decision=%s", decision)

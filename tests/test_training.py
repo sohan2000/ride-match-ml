@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import joblib
+
+from src.features.build_features import ONLINE_FEATURE_COLUMNS
 from src.models.train_model import train_and_evaluate
 from src.models.evaluate import evaluate_ranking_policy
 from src.models.train_utility_model import train_utility_model
@@ -21,6 +24,9 @@ def test_training_saves_gbdt_artifact(tmp_path: Path):
     assert output_path.exists()
     assert "roc_auc" in metrics
     assert metrics["positive_rate"] > 0
+    artifact = joblib.load(output_path)
+    assert artifact["model_type"] == "gradient_boosting_classifier"
+    assert artifact["feature_columns"] == ONLINE_FEATURE_COLUMNS
 
     ranking = evaluate_ranking_policy(str(output_path), str(input_path))
     assert ranking["requests_with_candidates"] > 0
@@ -38,6 +44,10 @@ def test_utility_training_saves_regressor_artifact(tmp_path: Path):
 
     assert output_path.exists()
     assert metrics["validation_mae"] >= 0
+    artifact = joblib.load(output_path)
+    assert artifact["model_type"] == "gradient_boosting_utility_regressor"
+    assert artifact["target_column"] == "candidate_utility"
+    assert artifact["feature_columns"] == ONLINE_FEATURE_COLUMNS
 
 
 def test_utility_tuning_returns_scenario_results():

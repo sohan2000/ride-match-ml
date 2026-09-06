@@ -36,7 +36,7 @@
     .eyebrow { color: var(--orange); font: 700 12px Arial, sans-serif; letter-spacing: .14em; text-transform: uppercase; }
     h1 { margin: 12px 0 12px; font-size: clamp(38px, 6vw, 70px); line-height: .98; font-weight: 500; }
     .intro p { max-width: 620px; margin: 0; color: var(--muted); font: 16px/1.6 Arial, sans-serif; }
-    .signals { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 26px 0 34px; }
+    .signals { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 26px 0 34px; }
     .signal { padding: 14px; background: rgba(255,255,255,.72); border: 1px solid var(--line); border-radius: 6px; }
     .signal-value { color: var(--green); font: 700 19px Arial, sans-serif; }
     .signal-label { margin-top: 5px; color: var(--muted); font: 10px Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
@@ -62,10 +62,14 @@
     .map-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .map-title h2 { margin: 0; }
     .map-title h2 span { color: var(--muted); font: 12px Arial, sans-serif; }
+    .map-actions { display: flex; align-items: center; gap: 10px; }
+    .fleet-action { width: 30px; height: 30px; margin: 0; padding: 0; color: var(--green); background: white; border: 1px solid #a8c7b2; font-size: 17px; line-height: 1; }
+    .fleet-action:hover { color: white; background: var(--green); }
     .tag { padding: 7px 10px; color: var(--green); background: var(--soft-green); border-radius: 99px; font: 700 11px Arial, sans-serif; }
     .drivers { overflow-x: auto; }
     .driver-table { width: 100%; border-collapse: collapse; min-width: 640px; font: 12px Arial, sans-serif; }
     .driver-table th { padding: 10px 8px; color: var(--muted); border-bottom: 1px solid var(--line); text-align: left; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+    .table-note { margin: 10px 0 12px; color: var(--muted); font: 11px Arial, sans-serif; }
     .driver-table td { padding: 11px 8px; border-bottom: 1px solid #edf1ed; white-space: nowrap; }
     .driver-table tr.nearby { background: #f0f8f2; }
     .driver-table tr.far { color: #829087; }
@@ -90,6 +94,7 @@
     .candidate { padding: 11px 0; border-top: 1px solid var(--line); font: 13px Arial, sans-serif; }
     .score { color: var(--green); font-weight: 700; }
     .error { display: none; margin-top: 14px; color: #a53f32; font: 13px Arial, sans-serif; }
+    @media (max-width: 900px) { .signals { grid-template-columns: repeat(3, 1fr); } }
     @media (max-width: 760px) { header { padding: 20px 22px; } main { padding: 38px 16px 54px; } .workspace { grid-template-columns: 1fr; } .map-panel { min-height: 500px; } #map { height: min(420px, 92vw); } .status { display: none; } .signals { grid-template-columns: repeat(2, 1fr); margin-bottom: 26px; } .signal:last-child { grid-column: span 2; } }
   </style>
 </head>
@@ -123,8 +128,9 @@
               <input id="pickup-x" type="number" step="0.1" value="4" aria-label="Pickup X" required>
               <input id="pickup-y" type="number" step="0.1" value="3" aria-label="Pickup Y" required>
             </div>
-            <label for="open-requests">Available rides</label>
-            <input id="open-requests" type="number" min="1" value="2" required>
+            <label for="open-requests">Nearby riders</label>
+            <input id="open-requests" type="number" min="1" max="100" value="1" required>
+            <p class="matching-status">More nearby riders increases demand pressure and estimated fare.</p>
             <p class="matching-status">Matching updates automatically when the pickup changes.</p>
             <p class="hint">40 km x 40 km grid. ETA uses straight-line distance at 2.5 min/km; real road routing is not modeled.</p>
             <div class="error" id="error"></div>
@@ -132,14 +138,21 @@
           <div class="result panel" id="result">
             <div class="result-kicker">Recommended match</div>
             <div class="selected" id="selected"></div>
+            <div class="driver-meta" id="match-summary"></div>
+            <div class="driver-meta">Utility score summarizes ETA, distance, supply pressure, and driver reliability. Higher is better; negative values are expected.</div>
+            <details class="driver-directory">
+              <summary>Why this match?</summary>
+              <div class="driver-meta" id="match-reasons"></div>
+            </details>
           </div>
         </div>
         <section class="panel map-panel">
           <div class="map-content">
-            <div class="map-title"><h2>Available drivers <span id="nearby-count"></span></h2><span class="tag">Live candidate pool</span></div>
+            <div class="map-title"><h2>Available drivers <span id="nearby-count"></span></h2><div class="map-actions"><button class="fleet-action" id="remove-driver" type="button" aria-label="Remove driver" title="Remove driver">−</button><button class="fleet-action" id="add-driver" type="button" aria-label="Add driver" title="Add driver">+</button><span class="tag">Live driver data</span></div></div>
             <div id="map" aria-label="RideMatch city grid map"></div>
             <details class="driver-directory">
               <summary>View driver details and model scores</summary>
+              <p class="table-note">Utility score: higher is better. The ranker selects the highest score; negative values are expected.</p>
               <div class="drivers" id="drivers"></div>
             </details>
           </div>
@@ -155,7 +168,9 @@
       [5.8, 18.7], [14.1, 15.2], [22.6, 24.4], [30.8, 19.6], [36.4, 28.1],
       [8.4, 31.8], [20.2, 35.0], [32.6, 34.2], [38.0, 17.4], [19.4, 8.8], [27.2, 14.6], [4.6, 25.2], [34.2, 24.8]
     ];
-    const drivers = fleetPositions.map(([x, y], index) => ({
+    const MIN_DRIVERS = 1;
+    const MAX_DRIVERS = 100;
+    let drivers = fleetPositions.map(([x, y], index) => ({
       driver_id: `Driver ${index + 1}`,
       x, y,
       idle_seconds: 60 + ((index * 47) % 420),
@@ -183,15 +198,21 @@
       L.polyline([[coordinate, 0], [coordinate, 40]], { color: "#cbdccb", weight: 1, opacity: .8 }).addTo(map);
       L.polyline([[0, coordinate], [40, coordinate]], { color: "#cbdccb", weight: 1, opacity: .8 }).addTo(map);
     }
-    const driverMarkers = drivers.map(d => L.circleMarker([d.y, d.x], {
+    let driverMarkers = drivers.map(d => L.circleMarker([d.y, d.x], {
       radius: 7, color: "#1f6b4d", weight: 2, fillColor: "#75b995", fillOpacity: .95
     }).bindTooltip(`${d.driver_id} · ${Math.round(d.acceptance_rate * 100)}% acceptance`).addTo(map));
+    const addDriverButton = document.getElementById("add-driver");
+    const removeDriverButton = document.getElementById("remove-driver");
+    function updateFleetControls() {
+      addDriverButton.disabled = drivers.length >= MAX_DRIVERS;
+      removeDriverButton.disabled = drivers.length <= MIN_DRIVERS;
+    }
     let pickupMarker = L.circleMarker([3, 4], {
       radius: 9, color: "#b75232", weight: 3, fillColor: "#e27d4f", fillOpacity: 1
     }).bindTooltip("Pickup point").addTo(map);
     let routeLine = L.polyline([], { color: "#17211b", weight: 3, opacity: .9, dashArray: "7 6" }).addTo(map);
     let routeLabel = L.marker([3, 4], {
-      icon: L.divIcon({ className: "route-label", html: "", iconSize: [230, 32], iconAnchor: [-10, 16] }),
+      icon: L.divIcon({ className: "route-label", html: "", iconSize: [285, 32], iconAnchor: [-10, 16] }),
       interactive: false
     }).addTo(map);
     function updateRoute() {
@@ -202,13 +223,15 @@
       }, drivers[0]);
       const distance = distanceToPickup(nearest);
       const labelOnLeft = pickupX > 25;
+      const demandPressure = Number(document.getElementById("open-requests").value) / Math.max(1, drivers.length);
+      const surgeMultiplier = Math.min(2.5, 1 + .25 * demandPressure);
       routeLine.setLatLngs([[pickupY, pickupX], [nearest.y, nearest.x]]);
       routeLabel.setLatLng([pickupY, pickupX]);
       routeLabel.setIcon(L.divIcon({
         className: "route-label",
-        html: `${nearest.driver_id} · ${distance.toFixed(1)} km · ETA ${(distance * 2.5).toFixed(1)} min`,
-        iconSize: [230, 32],
-        iconAnchor: labelOnLeft ? [240, 16] : [-10, 16]
+        html: `${nearest.driver_id} · ${distance.toFixed(1)} km · ETA ${(distance * 2.5).toFixed(1)} min · $${estimatedFare(distance).toFixed(2)} · ${surgeMultiplier.toFixed(2)}x`,
+        iconSize: [285, 32],
+        iconAnchor: labelOnLeft ? [295, 16] : [-10, 16]
       }));
     }
     let matchRequestSequence = 0;
@@ -228,13 +251,18 @@
       const y = Number(document.getElementById("pickup-y").value);
       return Math.hypot(driver.x - x, driver.y - y);
     }
+    function estimatedFare(distance) {
+      const demandPressure = Number(document.getElementById("open-requests").value) / Math.max(1, drivers.length);
+      const surge = Math.min(2.5, 1 + .25 * demandPressure);
+      return (3 + 1.45 * distance + .18 * distance * 2.5) * surge;
+    }
     function refreshNearby() {
       const nearby = drivers.filter(driver => distanceToPickup(driver) <= 7);
       document.getElementById("nearby-count").textContent = `${nearby.length} within 7 km`;
-      driversEl.innerHTML = `<table class="driver-table"><thead><tr><th>Driver</th><th>Coordinates</th><th>Distance</th><th>ETA</th><th>Acceptance</th><th>Model score</th></tr></thead><tbody>${drivers
+      driversEl.innerHTML = `<table class="driver-table"><thead><tr><th>Driver</th><th>Coordinates</th><th>Distance</th><th>ETA</th><th>Fare</th><th>Acceptance</th><th>Utility score</th></tr></thead><tbody>${drivers
         .slice()
         .sort((a, b) => distanceToPickup(a) - distanceToPickup(b))
-        .map(d => `<tr class="${distanceToPickup(d) <= 7 ? "nearby" : "far"}"><td><strong>${d.driver_id}</strong></td><td>(${d.x.toFixed(1)}, ${d.y.toFixed(1)})</td><td>${distanceToPickup(d).toFixed(1)} km</td><td>${(distanceToPickup(d) * 2.5).toFixed(1)} min</td><td>${Math.round(d.acceptance_rate * 100)}%</td><td class="driver-score">${latestScores[d.driver_id] !== undefined ? latestScores[d.driver_id] : "--"}</td></tr>`)
+        .map(d => `<tr class="${distanceToPickup(d) <= 7 ? "nearby" : "far"}"><td><strong>${d.driver_id}</strong></td><td>(${d.x.toFixed(1)}, ${d.y.toFixed(1)})</td><td>${distanceToPickup(d).toFixed(1)} km</td><td>${(distanceToPickup(d) * 2.5).toFixed(1)} min</td><td>$${estimatedFare(distanceToPickup(d)).toFixed(2)}</td><td>${Math.round(d.acceptance_rate * 100)}%</td><td class="driver-score">${latestScores[d.driver_id] !== undefined ? latestScores[d.driver_id] : "--"}</td></tr>`)
         .join("")}</tbody></table>`;
     }
     function moveDrivers() {
@@ -244,6 +272,7 @@
         driverMarkers[index].setLatLng([driver.y, driver.x]);
       });
       refreshNearby();
+      updateFleetControls();
       updateRoute();
     }
     map.on("click", event => setPickupPoint(event.latlng.lng, event.latlng.lat));
@@ -252,6 +281,7 @@
     const driversEl = document.getElementById("drivers");
     refreshNearby();
     updateRoute();
+    updateFleetControls();
     setInterval(moveDrivers, 1200);
 
     async function runMatch() {
@@ -267,11 +297,22 @@
           drivers
         })});
         const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || "Matching request failed");
+        if (!response.ok) {
+          const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail || data);
+          throw new Error(detail || "Matching request failed");
+        }
         if (requestSequence !== matchRequestSequence) return;
         latestScores = Object.fromEntries(data.candidates.map(candidate => [candidate.driver_id, candidate.score]));
         refreshNearby();
         document.getElementById("selected").textContent = data.selected_driver_id;
+        const selectedCandidate = data.candidates.find(candidate => candidate.driver_id === data.selected_driver_id);
+        const selectedDriver = drivers.find(driver => driver.driver_id === data.selected_driver_id);
+        const pickupX = Number(document.getElementById("pickup-x").value);
+        const pickupY = Number(document.getElementById("pickup-y").value);
+        const sameZone = selectedDriver && Math.floor(selectedDriver.x / 5) === Math.floor(pickupX / 5) && Math.floor(selectedDriver.y / 5) === Math.floor(pickupY / 5);
+        const nearby = drivers.filter(driver => distanceToPickup(driver) <= 7).length;
+        document.getElementById("match-summary").textContent = selectedCandidate ? `${selectedCandidate.distance_km} km away · ETA ${selectedCandidate.eta_minutes} min · $${selectedCandidate.estimated_fare} · ${selectedCandidate.surge_multiplier}x demand pricing · score ${selectedCandidate.score}` : "Match scored from the available driver pool";
+        document.getElementById("match-reasons").innerHTML = `<div>Closest available candidate in the ranked pool.</div><div>${sameZone ? "Already in the pickup zone." : "Selected from the current city-wide pool."}</div><div>${selectedDriver ? `${Math.round(selectedDriver.acceptance_rate * 100)}% historical acceptance.` : "Historical acceptance is unavailable."}</div><div>${nearby} driver${nearby === 1 ? "" : "s"} within 7 km of pickup.</div>`;
         document.getElementById("result").classList.add("visible");
       } catch (err) { error.textContent = err.message; error.style.display = "block"; }
     }
@@ -279,7 +320,43 @@
       event.preventDefault();
       runMatch();
     });
-    document.getElementById("open-requests").addEventListener("change", runMatch);
+    addDriverButton.addEventListener("click", () => {
+      if (drivers.length >= MAX_DRIVERS) return;
+      const driverIndex = drivers.length + 1;
+      const driver = {
+        driver_id: `Driver ${driverIndex}`,
+        x: .5 + Math.random() * 39,
+        y: .5 + Math.random() * 39,
+        idle_seconds: 60 + Math.floor(Math.random() * 420),
+        acceptance_rate: .72 + Math.random() * .24
+      };
+      drivers.push(driver);
+      driverMarkers.push(L.circleMarker([driver.y, driver.x], {
+        radius: 7, color: "#1f6b4d", weight: 2, fillColor: "#75b995", fillOpacity: .95
+      }).bindTooltip(`${driver.driver_id} · ${Math.round(driver.acceptance_rate * 100)}% acceptance`).addTo(map));
+      document.getElementById("signal-fleet").textContent = drivers.length;
+      refreshNearby();
+      updateRoute();
+      runMatch();
+    });
+    document.getElementById("open-requests").addEventListener("input", event => {
+      const value = Number(event.target.value);
+      if (!Number.isFinite(value) || value < 1) event.target.value = "1";
+      if (value > 100) event.target.value = "100";
+      updateRoute();
+      runMatch();
+    });
+    removeDriverButton.addEventListener("click", () => {
+      if (drivers.length <= MIN_DRIVERS) return;
+      drivers.pop();
+      const marker = driverMarkers.pop();
+      map.removeLayer(marker);
+      document.getElementById("signal-fleet").textContent = drivers.length;
+      updateFleetControls();
+      refreshNearby();
+      updateRoute();
+      runMatch();
+    });
     runMatch();
   </script>
 </body>
